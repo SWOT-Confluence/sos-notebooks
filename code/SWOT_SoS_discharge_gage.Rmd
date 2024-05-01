@@ -1,6 +1,7 @@
 ---
 title: "SWOT_SoS_discharge_gage"
 author: "Merritt Harlan"
+email: mharlan@usgs.gov
 date: '2024-04-29'
 output: html_document
 ---
