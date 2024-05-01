@@ -1,0 +1,38 @@
+found 0 corrupt files
+2 momma errored
+127 momma successful
+1209 momma no discharge
+0.09505988023952096 discharge creation rate
+
+found 0 corrupt files
+2 sad errored
+25 sad successful
+1311 sad no discharge
+0.0187125748502994 discharge creation rate
+
+found 0 corrupt files
+0 hivdi errored
+311 hivdi successful
+1027 hivdi no discharge
+0.23243647234678624 discharge creation rate
+couldnt move  /mnt/input/swot/74264100051_SWOT.nc
+couldnt move  /mnt/input/swot/74264100053_SWOT.nc
+
+found 0 corrupt files
+2 geobam errored
+0 geobam successful
+1336 geobam no discharge
+0.0 percent creation rate
+
+found 0 corrupt files
+1328 metroman errored
+0 metroman successful
+5 metroman no discharge
+0.0 percent creation rate
+procesing metroman indexes
+
+found 0 corrupt files
+2 sic4dvar errored
+799 sic4dvar successful
+537 sic4dvar no discharge
+0.5980538922155688 discharge creation rate
