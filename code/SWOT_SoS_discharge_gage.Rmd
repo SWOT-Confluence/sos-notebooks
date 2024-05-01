@@ -1,0 +1,323 @@
+---
+title: "SWOT_SoS_discharge_gage"
+author: "Merritt Harlan"
+email: mharlan@usgs.gov
+date: '2024-04-29'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(RNetCDF)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(dataRetrieval)
+library(ggforce)
+library(hrbrthemes)
+library(data.table)
+library(ggpmisc)
+library(ggsci)
+
+priors = open.nc("../../data/na_sword_v16_SOS_priors.nc")
+results = open.nc("../../data/na_sword_v16_SOS_results_EOD_day2_pre_postdiag.nc")
+
+reach_ids = unlist(var.get.nc(grp.inq.nc(results, "reaches")$self, "reach_id"))
+time = var.get.nc(grp.inq.nc(results, "reaches")$self, "time")
+
+#discharge from the algorithm
+MOMMA = grp.inq.nc(results, "momma")$self
+MOMMA_Q = var.get.nc(MOMMA, "Q")
+HiVDI = grp.inq.nc(results, "hivdi")$self
+HiVDI_Q = var.get.nc(HiVDI, "Q")
+MetroMan = grp.inq.nc(results, "metroman")$self
+MetroMan_Q = var.get.nc(MetroMan, "allq")
+SAD = grp.inq.nc(results, "sad")$self
+SAD_Q = var.get.nc(SAD, "Qa")
+Sic4DVar = grp.inq.nc(results, "sic4dvar")$self
+Sic4DVar_Q = var.get.nc(Sic4DVar, "Q_da")
+
+#discharge from the integrator
+MOI = grp.inq.nc(results, "moi")$self
+MOI_HiVDI = grp.inq.nc(MOI, "hivdi")$self
+MOI_HiVDI_Q = var.get.nc(MOI_HiVDI, "q")
+MOI_MetroMan = grp.inq.nc(MOI, "metroman")$self
+MOI_MetroMan_Q = var.get.nc(MOI_MetroMan, "q")
+MOI_MOMMA = grp.inq.nc(MOI, "momma")$self
+MOI_MOMMA_Q = var.get.nc(MOI_MOMMA, "q")
+MOI_neoBAM = grp.inq.nc(MOI, "geobam")$self
+MOI_neoBAM_Q = var.get.nc(MOI_neoBAM, "q")
+MOI_SAD = grp.inq.nc(MOI, "sad")$self
+MOI_SAD_Q = var.get.nc(MOI_SAD, "q")
+MOI_SIC4DVar = grp.inq.nc(MOI, "sic4dvar")$self
+MOI_SIC4DVar_Q = var.get.nc(MOI_SIC4DVar, "q")
+
+```
+
+
+```{r}
+#translate discharge into dataframe, discard NA values
+get_Q_df = function(Q_list){
+  out_df = data.frame()
+  for(i in 1:length(Q_list)){
+    reach_ts = Q_list[[i]]
+    reach_ts[reach_ts < 0] = NA
+    if(!is.na(mean(reach_ts, na.rm = TRUE))){
+      df = data.frame(reach_id = reach_ids[i], Q_cms = reach_ts, 
+                      time = as.POSIXct(time[[i]], origin = "2000-01-01", tz = "GMT"))
+      out_df = rbind(df, out_df)
+    }
+  }
+  out_df = out_df[complete.cases(out_df), ]
+  return(out_df)
+}
+
+HiVDI_Q_df = get_Q_df(HiVDI_Q)
+SAD_Q_df = get_Q_df(SAD_Q)
+Sic4DVar_Q_df = get_Q_df(Sic4DVar_Q)
+MOMMA_Q_df = get_Q_df(MOMMA_Q)
+MOI_HiVDI_Q_df = get_Q_df(MOI_HiVDI_Q)
+MOI_SAD_Q_df = get_Q_df(MOI_SAD_Q)
+MOI_Sic4DVar_Q_df = get_Q_df(MOI_SIC4DVar_Q)
+MOI_MOMMA_Q_df = get_Q_df(MOI_MOMMA_Q)
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+#plot a hydrograph of each reach with data
+
+#master discharge dataframe
+SWOT_Q_df = rbind(HiVDI_Q_df %>% mutate(Algorithm = "HiVDI") %>% mutate(Run = "algorithm"), 
+                  SAD_Q_df %>% mutate(Algorithm = "SAD") %>% mutate(Run = "algorithm"),
+                  Sic4DVar_Q_df %>% mutate(Algorithm = "Sic4DVar") %>% mutate(Run = "algorithm"),
+                  MOMMA_Q_df %>% mutate(Algorithm = "MOMMA") %>% mutate(Run = "algorithm"),
+                  MOI_HiVDI_Q_df %>% mutate(Algorithm = "HiVDI") %>% mutate(Run = "integrator"), 
+                  MOI_SAD_Q_df %>% mutate(Algorithm = "SAD") %>% mutate(Run = "integrator"),
+                  MOI_Sic4DVar_Q_df %>% mutate(Algorithm = "Sic4DVar") %>% mutate(Run = "integrator"),
+                  MOI_MOMMA_Q_df %>% mutate(Algorithm = "MOMMA") %>% mutate(Run = "integrator"))
+
+
+length(unique(SWOT_Q_df$reach_id))
+
+gg = ggplot(SWOT_Q_df, aes(x = time, y = Q_cms, color = Algorithm, lty = Run)) + 
+    geom_point() + geom_line() + 
+    xlab("Date") + ylab(expression(paste("Discharge ", m^3/s))) + 
+    theme_classic() + 
+    theme(legend.position = "top") +
+    scale_color_jco()+
+    facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1, scales = "free_y")
+n = n_pages(gg)
+
+# pdf('../out/SWOT_hydrographs.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
+# for(i in 1:n){
+#     print(gg + facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = i, scales = "free_y"))
+# }
+# dev.off()
+
+```
+
+```{r message=FALSE, warning=FALSE}
+SWOT_input_files = list.files("../../data/data_packets/geobam_data/no_discharge/swot_files/", full.names = TRUE)
+
+get_SWOT_data = function(nc_file){
+  SWOT_input_nc = open.nc(nc_file)
+  reach = grp.inq.nc(SWOT_input_nc, "reach")$self
+  reach_id = var.get.nc(reach, "reach_id")
+  reach_time = var.get.nc(reach, "time")
+  reach_wse = var.get.nc(reach, "wse")
+  reach_wse_u = var.get.nc(reach, "wse_u")
+  reach_width = var.get.nc(reach, "wse")
+  reach_width_u = var.get.nc(reach, "wse_u")
+  reach_q = var.get.nc(reach, "reach_q")
+  reach_slope = var.get.nc(reach, "slope")
+  reach_slope_u = var.get.nc(reach, "slope_u")
+  reach_df = data.frame(reach_id = reach_id, 
+                        time = as.POSIXct(reach_time, origin = "2000-01-01", tz = "GMT"), 
+                        wse = reach_wse, wse_u = reach_wse_u, 
+                        width = reach_width, width_u = reach_width_u,
+                        slope = reach_slope, slope_u = reach_slope_u, 
+                        reach_q = reach_q)
+  return(reach_df)
+}
+
+SWOT_input = do.call(rbind, lapply(SWOT_input_files, get_SWOT_data)) %>% 
+  filter(!is.na(time)) %>%
+  filter(!is.na(wse))
+
+#find reaches with gauge information
+USGS_nc = grp.inq.nc(priors, "USGS")$self
+USGS_id = var.get.nc(USGS_nc, "USGS_id")
+USGS_reach_id = var.get.nc(USGS_nc, "USGS_reach_id")
+USGS_df = data.frame(USGS_id = USGS_id, reach_id = USGS_reach_id)
+
+SWOT_input_gauged = SWOT_input %>% filter(reach_id %in% USGS_df$reach_id) %>% left_join(USGS_df)
+
+#compare with USGS stage data
+compare_USGS_data = function(reach_row){
+  stage_out = readNWISuv(siteNumbers = reach_row$USGS_id,
+                     parameterCd = "00065",
+                     startDate = as.Date(reach_row$time - 3600, tz = "GMT"),
+                     endDate = as.Date(reach_row$time + 3600, tz = "GMT"),
+                  tz = "UTC") %>% mutate(time = dateTime)
+  
+ matching_time = setDT(stage_out)[reach_row, dateTime, roll = "nearest", on = "time"]
+ stage_match = stage_out %>% filter(dateTime == matching_time)
+ Q_match = readNWISuv(siteNumbers = reach_row$USGS_id,
+                     parameterCd = "00060",
+                     startDate = as.Date(reach_row$time - 3600, tz = "GMT"),
+                     endDate = as.Date(reach_row$time + 3600, tz = "GMT"),
+                  tz = "UTC") %>% filter(dateTime == matching_time)
+ if(nrow(stage_match)> 0 & nrow(Q_match)>0){
+   if(ncol(stage_out > 8)){
+     stage = mean(na.omit(c(c(as.numeric(stage_match[,4]),
+               as.numeric(stage_match[,6])))))
+   }else{
+     stage = na.omit(as.numeric(stage_match[,4]))
+   }
+   USGS_gage_df = data.frame(USGS_id = Q_match$site_no, reach_id = reach_row$reach_id,
+                               USGS_time = matching_time, time = reach_row$time,
+                               USGS_Q = Q_match$X_00060_00000 * 0.0283168466,
+                               USGS_stage = stage * 0.3048)
+     
+    USGS_out = reach_row %>% left_join(USGS_gage_df)
+    return(USGS_out)
+ }
+}
+
+SWOT_USGS_matched = data.frame()
+for(i in 1:nrow(SWOT_input_gauged)){
+  df = compare_USGS_data(SWOT_input_gauged[i,])
+  SWOT_USGS_matched = rbind(SWOT_USGS_matched, df)
+}
+
+```
+
+```{r}
+#get minimum height, and correct data from those values to make the comparison visually easier
+SWOT_USGS_matched_scaled = SWOT_USGS_matched %>% group_by(reach_id) %>% summarize(mean_wse = mean(wse), mean_stage = mean(USGS_stage), n = n())
+
+SWOT_USGS_matched_comparison = SWOT_USGS_matched %>% left_join(SWOT_USGS_matched_scaled) %>%
+  filter(n > 2) %>% mutate(USGS_stage_scaled = USGS_stage - mean_stage) %>%
+  mutate(SWOT_WSE_scaled = wse - mean_wse)
+
+#plot SWOT wse vs USGS stage
+wse_plot = ggplot(SWOT_USGS_matched_comparison, 
+                  aes(x = SWOT_WSE_scaled, y = USGS_stage_scaled)) + 
+  theme(aspect.ratio = 1) +
+  geom_point() +
+  xlab("SWOT WSE (m)") + ylab("USGS Stage (m)") +
+  theme_classic() + 
+  theme(legend.position = "top") +
+  coord_fixed(xlim = c(-5, 5), ylim = c(-5,5)) +
+  stat_poly_eq(use_label(c("eq", "R2")), formula = y~x + 0, size = 2.4) +
+  geom_abline(slope = 1, intercept = 0, color = "grey50", lty = 2) +
+  facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1) 
+
+n = n_pages(wse_plot)
+
+pdf('../out/SWOT_WSE_comparison.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
+for(i in 1:n){
+    print(wse_plot + facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = i))
+}
+dev.off()
+
+WSE_cdf = ggplot(SWOT_USGS_matched_comparison %>% 
+         mutate(WSE_difference = abs(USGS_stage_scaled - SWOT_WSE_scaled)), 
+       aes(WSE_difference)) + stat_ecdf() + coord_cartesian(xlim = c(0, 5)) + theme_classic() +
+  geom_vline(xintercept = 0.10, color = "cornflowerblue") +
+  geom_vline(xintercept = 0.20, color = "purple")
+
+WSE_error_df = SWOT_USGS_matched_comparison %>% 
+         mutate(WSE_difference = abs(USGS_stage_scaled - SWOT_WSE_scaled))
+
+WSE_error_68 = quantile(WSE_error_df$WSE_difference, probs = 0.68, na.rm = TRUE)
+
+pdf('../out/SWOT_WSE_cdf.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
+WSE_cdf
+dev.off()
+
+```
+
+
+```{r}
+SWOT_Q_gauged = rbind(SWOT_Q_df %>% filter(reach_id %in% USGS_df$reach_id),
+                      SWOT_USGS_matched %>% mutate(Q_cms = USGS_Q) %>% 
+                        mutate(Algorithm = "Gauge") %>% mutate(Run = "algorithm") %>%
+                        select(reach_id, Q_cms, time, Algorithm, Run))
+
+#plot SWOT discharge vs USGS discharge
+USGS_q = var.get.nc(USGS_nc, "USGS_q")
+USGS_qt = var.get.nc(USGS_nc, "USGS_qt")
+
+reach_index = which(USGS_reach_id %in% SWOT_Q_gauged$reach_id)
+
+USGS_OH_qt = USGS_qt[,reach_index]
+colnames(USGS_OH_qt) = USGS_reach_id[reach_index]
+USGS_OH_qt_long = data.frame(USGS_OH_qt) %>% 
+  pivot_longer(cols = c(1:ncol(USGS_OH_qt)), names_to = "reach_id", values_to = "days") %>%
+  mutate(reach_id = substr(reach_id, 2, nchar(reach_id))) %>%
+  mutate(Date = as.Date(days, origin = "0001-01-1"))
+
+USGS_OH_q = USGS_q[,reach_index]
+colnames(USGS_OH_q) = USGS_reach_id[reach_index]
+USGS_OH_q_long = data.frame(USGS_OH_q) %>% 
+  pivot_longer(cols = c(1:ncol(USGS_OH_q)), names_to = "reach_id", values_to = "Q_gauge") %>%
+  mutate(reach_id = substr(reach_id, 2, nchar(reach_id)))
+
+discharge_dates = data.frame(SWOT_Q_gauged %>% select(reach_id, Q_cms, time) %>% drop_na() %>% mutate(Date = as.Date(time)) %>%
+  group_by(reach_id, Date) %>% summarize(Q_mean = mean(Q_cms)))
+
+get_SWOT_dailyQ = function(obs){
+  obs_date = obs$Date
+  obs_reachid = obs$reach_id
+  matching_df = USGS_OH_qt_long %>% filter(reach_id == obs_reachid)
+  date_index = which(matching_df$Date == obs_date)
+  matching_Q = USGS_OH_q_long %>% filter(reach_id == obs_reachid)
+  matching_Q_value = matching_Q[date_index,] %>% mutate(time = obs_date) %>% mutate(Q_cms = Q_gauge) %>%
+    mutate(Algorithm = "USGS_daily_Q") %>% mutate(Run = "run") %>% select(-Q_gauge)
+  return(data.frame(matching_Q_value))
+}
+
+SWOT_dailyQ_df = data.frame()
+for(i in 1:nrow(discharge_dates)){
+  SWOT_dailyQ_df = rbind(SWOT_dailyQ_df, get_SWOT_dailyQ(discharge_dates[i,]))
+}
+
+SWOT_Q_gauged = rbind(SWOT_Q_gauged, SWOT_dailyQ_df)
+
+Q_plot = ggplot(SWOT_Q_gauged, aes(x = time, y = Q_cms, color = Algorithm, lty = Run)) + 
+    geom_point() + geom_line() + 
+    xlab("Date") + ylab(expression(paste("Discharge ", m^3/s))) + 
+    theme_classic() + 
+    theme(legend.position = "top") +
+    scale_color_manual(values = 
+                         c("black", "grey40", "#0073C2FF", "#EFC000FF",
+                           "#CD534CFF","#7AA6DCFF"),
+                       breaks = c("Gauge", "USGS_daily_Q","HiVDI", "MOMMA", "SAD", "Sic4DVar"))+
+    facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1, scales = "free_y")
+
+n = n_pages(Q_plot)
+
+pdf('../out/SWOT_hydrographs_gauged.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
+for(i in 1:n){
+    print(Q_plot + facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = i, scales = "free_y"))
+}
+dev.off()
+
+```
+
+
+```{r}
+#map of SWOT reaches by discharge for each algorithm with gage locations
+
+
+#map of error metrics for each reach
+
+
+```
+
