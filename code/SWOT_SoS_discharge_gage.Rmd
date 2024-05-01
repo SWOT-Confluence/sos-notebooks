@@ -21,9 +21,10 @@ library(ggforce)
 library(hrbrthemes)
 library(data.table)
 library(ggpmisc)
+library(ggsci)
 
-priors = open.nc("../data/na_sword_v16_SOS_priors.nc")
-results = open.nc("../data/na_sword_v16_SOS_results_EOD_day1.nc")
+priors = open.nc("../../data/na_sword_v16_SOS_priors.nc")
+results = open.nc("../../data/na_sword_v16_SOS_results_EOD_day2_pre_postdiag.nc")
 
 reach_ids = unlist(var.get.nc(grp.inq.nc(results, "reaches")$self, "reach_id"))
 time = var.get.nc(grp.inq.nc(results, "reaches")$self, "time")
@@ -79,6 +80,10 @@ HiVDI_Q_df = get_Q_df(HiVDI_Q)
 SAD_Q_df = get_Q_df(SAD_Q)
 Sic4DVar_Q_df = get_Q_df(Sic4DVar_Q)
 MOMMA_Q_df = get_Q_df(MOMMA_Q)
+MOI_HiVDI_Q_df = get_Q_df(MOI_HiVDI_Q)
+MOI_SAD_Q_df = get_Q_df(MOI_SAD_Q)
+MOI_Sic4DVar_Q_df = get_Q_df(MOI_SIC4DVar_Q)
+MOI_MOMMA_Q_df = get_Q_df(MOI_MOMMA_Q)
 
 ```
 
@@ -87,19 +92,24 @@ MOMMA_Q_df = get_Q_df(MOMMA_Q)
 #plot a hydrograph of each reach with data
 
 #master discharge dataframe
-SWOT_Q_df = rbind(HiVDI_Q_df %>% mutate(algorithm = "HiVDI"), 
-                  SAD_Q_df %>% mutate(algorithm = "SAD"),
-                  Sic4DVar_Q_df %>% mutate(algorithm = "Sic4DVar"),
-                  MOMMA_Q_df %>% mutate(algorithm = "MOMMA"))
+SWOT_Q_df = rbind(HiVDI_Q_df %>% mutate(Algorithm = "HiVDI") %>% mutate(Run = "algorithm"), 
+                  SAD_Q_df %>% mutate(Algorithm = "SAD") %>% mutate(Run = "algorithm"),
+                  Sic4DVar_Q_df %>% mutate(Algorithm = "Sic4DVar") %>% mutate(Run = "algorithm"),
+                  MOMMA_Q_df %>% mutate(Algorithm = "MOMMA") %>% mutate(Run = "algorithm"),
+                  MOI_HiVDI_Q_df %>% mutate(Algorithm = "HiVDI") %>% mutate(Run = "integrator"), 
+                  MOI_SAD_Q_df %>% mutate(Algorithm = "SAD") %>% mutate(Run = "integrator"),
+                  MOI_Sic4DVar_Q_df %>% mutate(Algorithm = "Sic4DVar") %>% mutate(Run = "integrator"),
+                  MOI_MOMMA_Q_df %>% mutate(Algorithm = "MOMMA") %>% mutate(Run = "integrator"))
 
 
 length(unique(SWOT_Q_df$reach_id))
 
-gg = ggplot(SWOT_Q_df, aes(x = time, y = Q_cms, color = algorithm)) + 
+gg = ggplot(SWOT_Q_df, aes(x = time, y = Q_cms, color = Algorithm, lty = Run)) + 
     geom_point() + geom_line() + 
-    xlab("Date") + ylab("Discharge (m3/s)") + 
+    xlab("Date") + ylab(expression(paste("Discharge ", m^3/s))) + 
     theme_classic() + 
     theme(legend.position = "top") +
+    scale_color_jco()+
     facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1, scales = "free_y")
 n = n_pages(gg)
 
@@ -112,7 +122,7 @@ n = n_pages(gg)
 ```
 
 ```{r message=FALSE, warning=FALSE}
-SWOT_input_files = list.files("../data/data_packets/geobam_data/no_discharge/swot_files/", full.names = TRUE)
+SWOT_input_files = list.files("../../data/data_packets/geobam_data/no_discharge/swot_files/", full.names = TRUE)
 
 get_SWOT_data = function(nc_file){
   SWOT_input_nc = open.nc(nc_file)
@@ -197,14 +207,15 @@ SWOT_USGS_matched_comparison = SWOT_USGS_matched %>% left_join(SWOT_USGS_matched
 
 #plot SWOT wse vs USGS stage
 wse_plot = ggplot(SWOT_USGS_matched_comparison, 
-                  aes(x = USGS_stage_scaled, y = SWOT_WSE_scaled)) + 
+                  aes(x = SWOT_WSE_scaled, y = USGS_stage_scaled)) + 
   theme(aspect.ratio = 1) +
-  geom_point() + geom_line() + 
-  xlab("USGS Stage (m)") + ylab("SWOT WSE (m)") +
+  geom_point() +
+  xlab("SWOT WSE (m)") + ylab("USGS Stage (m)") +
   theme_classic() + 
   theme(legend.position = "top") +
   coord_fixed(xlim = c(-5, 5), ylim = c(-5,5)) +
-  stat_poly_eq() +
+  stat_poly_eq(use_label(c("eq", "R2")), formula = y~x + 0, size = 2.4) +
+  geom_abline(slope = 1, intercept = 0, color = "grey50", lty = 2) +
   facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1) 
 
 n = n_pages(wse_plot)
@@ -215,47 +226,90 @@ for(i in 1:n){
 }
 dev.off()
 
-ggplot(SWOT_USGS_matched_comparison %>% 
+WSE_cdf = ggplot(SWOT_USGS_matched_comparison %>% 
          mutate(WSE_difference = abs(USGS_stage_scaled - SWOT_WSE_scaled)), 
        aes(WSE_difference)) + stat_ecdf() + coord_cartesian(xlim = c(0, 5)) + theme_classic() +
-  geom_vline(xintercept = 0.10, color = "cornflowerblue")
+  geom_vline(xintercept = 0.10, color = "cornflowerblue") +
+  geom_vline(xintercept = 0.20, color = "purple")
+
+WSE_error_df = SWOT_USGS_matched_comparison %>% 
+         mutate(WSE_difference = abs(USGS_stage_scaled - SWOT_WSE_scaled))
+
+WSE_error_68 = quantile(WSE_error_df$WSE_difference, probs = 0.68, na.rm = TRUE)
+
+pdf('../out/SWOT_WSE_cdf.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
+WSE_cdf
+dev.off()
 
 ```
+
 
 ```{r}
-#plot SWOT discharge vs USGS discharge with error metrics
-SWOT_Q_gauged = SWOT_Q_df%>% filter(reach_id %in% USGS_df$reach_id) %>% left_join(SWOT_USGS_matched) %>% left_join(SWOT_USGS_matched_scaled)
+SWOT_Q_gauged = rbind(SWOT_Q_df %>% filter(reach_id %in% USGS_df$reach_id),
+                      SWOT_USGS_matched %>% mutate(Q_cms = USGS_Q) %>% 
+                        mutate(Algorithm = "Gauge") %>% mutate(Run = "algorithm") %>%
+                        select(reach_id, Q_cms, time, Algorithm, Run))
 
-#plot SWOT wse vs USGS stage
-Q_plot = ggplot(SWOT_Q_gauged, 
-                  aes(x = Q_cms, y = Q_cms)) + 
-  theme(aspect.ratio = 1) +
-  geom_point() + geom_line() + 
-  xlab("USGS Stage (m)") + ylab("SWOT WSE (m)") +
-  theme_classic() + 
-  theme(legend.position = "top") +
-  coord_fixed(xlim = c(-5, 5), ylim = c(-5,5)) +
-  stat_poly_eq() +
-  facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1) 
+#plot SWOT discharge vs USGS discharge
+USGS_q = var.get.nc(USGS_nc, "USGS_q")
+USGS_qt = var.get.nc(USGS_nc, "USGS_qt")
 
-n = n_pages(wse_plot)
+reach_index = which(USGS_reach_id %in% SWOT_Q_gauged$reach_id)
 
-pdf('../out/SWOT_WSE_comparison.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
+USGS_OH_qt = USGS_qt[,reach_index]
+colnames(USGS_OH_qt) = USGS_reach_id[reach_index]
+USGS_OH_qt_long = data.frame(USGS_OH_qt) %>% 
+  pivot_longer(cols = c(1:ncol(USGS_OH_qt)), names_to = "reach_id", values_to = "days") %>%
+  mutate(reach_id = substr(reach_id, 2, nchar(reach_id))) %>%
+  mutate(Date = as.Date(days, origin = "0001-01-1"))
+
+USGS_OH_q = USGS_q[,reach_index]
+colnames(USGS_OH_q) = USGS_reach_id[reach_index]
+USGS_OH_q_long = data.frame(USGS_OH_q) %>% 
+  pivot_longer(cols = c(1:ncol(USGS_OH_q)), names_to = "reach_id", values_to = "Q_gauge") %>%
+  mutate(reach_id = substr(reach_id, 2, nchar(reach_id)))
+
+discharge_dates = data.frame(SWOT_Q_gauged %>% select(reach_id, Q_cms, time) %>% drop_na() %>% mutate(Date = as.Date(time)) %>%
+  group_by(reach_id, Date) %>% summarize(Q_mean = mean(Q_cms)))
+
+get_SWOT_dailyQ = function(obs){
+  obs_date = obs$Date
+  obs_reachid = obs$reach_id
+  matching_df = USGS_OH_qt_long %>% filter(reach_id == obs_reachid)
+  date_index = which(matching_df$Date == obs_date)
+  matching_Q = USGS_OH_q_long %>% filter(reach_id == obs_reachid)
+  matching_Q_value = matching_Q[date_index,] %>% mutate(time = obs_date) %>% mutate(Q_cms = Q_gauge) %>%
+    mutate(Algorithm = "USGS_daily_Q") %>% mutate(Run = "run") %>% select(-Q_gauge)
+  return(data.frame(matching_Q_value))
+}
+
+SWOT_dailyQ_df = data.frame()
+for(i in 1:nrow(discharge_dates)){
+  SWOT_dailyQ_df = rbind(SWOT_dailyQ_df, get_SWOT_dailyQ(discharge_dates[i,]))
+}
+
+SWOT_Q_gauged = rbind(SWOT_Q_gauged, SWOT_dailyQ_df)
+
+Q_plot = ggplot(SWOT_Q_gauged, aes(x = time, y = Q_cms, color = Algorithm, lty = Run)) + 
+    geom_point() + geom_line() + 
+    xlab("Date") + ylab(expression(paste("Discharge ", m^3/s))) + 
+    theme_classic() + 
+    theme(legend.position = "top") +
+    scale_color_manual(values = 
+                         c("black", "grey40", "#0073C2FF", "#EFC000FF",
+                           "#CD534CFF","#7AA6DCFF"),
+                       breaks = c("Gauge", "USGS_daily_Q","HiVDI", "MOMMA", "SAD", "Sic4DVar"))+
+    facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = 1, scales = "free_y")
+
+n = n_pages(Q_plot)
+
+pdf('../out/SWOT_hydrographs_gauged.pdf', paper= 'A4', w= 210/25.4, 297/25.4)
 for(i in 1:n){
-    print(wse_plot + facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = i))
+    print(Q_plot + facet_wrap_paginate(~reach_id, ncol = 5, nrow = 5, page = i, scales = "free_y"))
 }
 dev.off()
 
-ggplot(SWOT_USGS_matched_comparison %>% 
-         mutate(WSE_difference = abs(USGS_stage_scaled - SWOT_WSE_scaled)), 
-       aes(WSE_difference)) + stat_ecdf() + coord_cartesian(xlim = c(0, 5)) + theme_classic() +
-  geom_vline(xintercept = 0.10, color = "cornflowerblue")
-
-
-#CDF of all error metrics
-
 ```
-
 
 
 ```{r}
