@@ -23,8 +23,8 @@ library(data.table)
 library(ggpmisc)
 library(ggsci)
 
-priors = open.nc("../../data/na_sword_v16_SOS_priors.nc")
-results = open.nc("../../data/na_sword_v16_SOS_results_EOD_day2_pre_postdiag.nc")
+priors = open.nc("../data/na_sword_v16_SOS_priors.nc")
+results = open.nc("../data/na_sword_v16_SOS_results_EOD_day2_pre_postdiag.nc")
 
 reach_ids = unlist(var.get.nc(grp.inq.nc(results, "reaches")$self, "reach_id"))
 time = var.get.nc(grp.inq.nc(results, "reaches")$self, "time")
@@ -122,7 +122,7 @@ n = n_pages(gg)
 ```
 
 ```{r message=FALSE, warning=FALSE}
-SWOT_input_files = list.files("../../data/data_packets/geobam_data/no_discharge/swot_files/", full.names = TRUE)
+SWOT_input_files = list.files("../data/data_packets/geobam_data/no_discharge/swot_files/", full.names = TRUE)
 
 get_SWOT_data = function(nc_file){
   SWOT_input_nc = open.nc(nc_file)
@@ -242,6 +242,38 @@ WSE_cdf
 dev.off()
 
 ```
+
+```{r}
+#plot USGS width vs SWOT width
+##Download all ADCP data from a site
+
+# download_ADCP <- function(SiteID = site_no, startDate = start, endDate = end){
+#   raw.data = readNWISmeas(SiteID, tz = "UTC", startDate, endDate, expanded = TRUE)
+#   
+#   ##Read in Site Name
+#   sitename <- readNWISsite(SiteID)
+#   raw.data = raw.data[, c("measurement_dateTime", "site_no", "gage_height_va", "discharge_va",
+#                           "chan_discharge", "chan_width", "chan_area", "chan_velocity", "measured_rating_diff", 
+#                           "meas_type", "streamflow_method", "velocity_method")]
+#   
+#   #Add decimal date, depth, and remove NAs
+#   raw.data <- raw.data %>% mutate(DD = decimal_date(measurement_dateTime)) %>% 
+#     mutate(chan_depth = chan_area/chan_width) %>%
+#     mutate(Fr = (chan_velocity/sqrt(32.17405*chan_depth))) %>%
+#     drop_na()
+#   return(raw.data)
+# }
+# 
+# ptm = proc.time()
+# USGS_SWOT_ADCP_measurements = do.call(rbind, lapply(SWORD_v16_USGS_gages$site_no, possibly(download_ADCP, otherwise = NULL)))
+# proc.time() - ptm
+# 
+
+#plot (static) NHD slope vs SWOT width
+
+
+```
+
 
 
 ```{r}
